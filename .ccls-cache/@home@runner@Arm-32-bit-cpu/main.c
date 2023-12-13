@@ -1,79 +1,77 @@
-#include <stdio.h>
-#include <stdint.h>
+#include "main.h"
 
-#define WORD uint32_t
-#define HALF_WORD uint16_t
-#define BYTE uint8_t
-// placeholder values
-static const int BIOS_SIZE = 256;
-static const int RAM_SIZE = 256;
-
-static const int REGISTER_AMOUMT = 16;
-enum cspr_masks {
-  MODE_MASK = 0b11111,
-  THUMB_MASK = 0b1 << 4,
-  FIQ_MASK = 0b1 << 5,
-  IRQ_MASK = 0b1 << 6,
-  ABORT_MASK = 0b1 << 7,
-  ENDIAN_MASK = 0b1 << 8,
-  IT_MASK = 0b111111 << 9,
-  GE_MASK = 0b1111 << 15,
-  JAZZELE_MASK = 0b1 << 23,
-  THUMBV2_IT_MASK = 0b11 << 24,
-  SATURATION_MASK = 0b1 << 26,
-  STATUS_MASK = 0b11111 << 27
-};
-
-enum cpsr_mode {
-  MODE_USER = 0b10000,
-  MODE_FIQ = 0b10001,
-  MODE_IRQ = 0b10010,
-  MODE_SUPERVISOR = 0b10011,
-  MODE_ABORT = 0b10111,
-  MODE_UNDEFINED = 0b11011,
-  MODE_SYSTEM = 0b11111
-};
-
-enum cpsr_alu_flag {
-  FLAG_V = 0b0001,
-  FLAG_C = 0b0010,
-  FLAG_Z = 0b0100,
-  FLAG_N = 0b1000
-};
-
-enum registers {
-  r0 = 0,
-  r1,
-  r2,
-  r3,
-  r4,
-  r5,
-  r6,
-  r7,
-  r8,
-  r9,
-  r10,
-  r11,
-  r12,
-  sp,
-  ra,
-  link = ra,
-  pc
-};
-
-struct cpu {
-  uint32_t registers[REGISTER_AMOUMT];
-
-  uint32_t rom[BIOS_SIZE];
-  uint32_t ram[RAM_SIZE];
-  uint32_t cpsr;
-
-};
-
-struct bus {
-
-};
 int main(void) {
-  printf("%d, %d\n", ra, link);
+  struct cpu cpu;
   return 0;
+}
+
+WORD cpu_load_word(struct cpu *cpu, WORD address)
+{
+  WORD memory = cpu->ram[address+3];
+  memory <<= 8;
+  memory |= cpu->ram[address+2];
+  memory <<= 8;
+  memory |= cpu->ram[address+1];
+  memory <<= 8;
+  memory |= cpu->ram[address];
+  return memory;
+}
+
+void cpu_save_word(struct cpu *cpu, WORD address, WORD value){
+  for (int i = 0; i < 4; i++)
+    {
+      cpu->ram[address+i] = value >> sizeof(BYTE)*i*8;
+      printf("byte %d saved as %u\n", i, cpu->ram[address+i]);
+    } 
+}
+
+HALF_WORD cpu_load_halfword(struct cpu *cpu, HALF_WORD address)
+{
+  HALF_WORD memory = cpu->ram[address+1];
+  memory <<= sizeof(BYTE)*8;
+  memory |= cpu->ram[address];
+  return memory;
+}
+
+void cpu_save_halfword(struct cpu *cpu, WORD address, HALF_WORD value){
+  for (int i = 0; i < 2; i++)
+    {
+      cpu->ram[address+i] = value >> sizeof(BYTE)*i*8;
+      printf("byte %d saved as %u\n", i, cpu->ram[address+i]);
+    } 
+}
+
+void cpu_loop(struct cpu *cpu)
+{
+  if((cpu->cpsr & THUMB_MASK) == THUMB_MASK)
+  {
+  HALF_WORD instruction = cpu_load_halfword(cpu, cpu->registers[pc]);
+  
+    cpu_execute_thumb_instruction(cpu, instruction);
+    cpu->registers[pc] += sizeof(HALF_WORD);
+  }
+  else
+  {
+    WORD instruction = cpu_load_word(cpu, cpu->registers[pc]);
+  
+    cpu_execute_arm_instruction(cpu, instruction);
+    cpu->registers[pc] += sizeof(WORD);
+  }
+  
+}
+
+void cpu_execute_arm_instruction( struct cpu *cpu, WORD instruction)
+{
+  if((instruction & STATUS_MASK) != (cpu->cpsr & STATUS_MASK))
+  {
+    return;
+  }
+}
+
+void cpu_execute_thumb_instruction( struct cpu *cpu, HALF_WORD instruction)
+{
+  if((instruction & STATUS_MASK) != (cpu->cpsr & STATUS_MASK))
+  {
+    return;
+  }
 }
