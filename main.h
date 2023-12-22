@@ -8,9 +8,12 @@
 #define WORD uint32_t
 #define HALF_WORD uint16_t
 #define BYTE uint8_t
-// placeholder values
-static const int BIOS_SIZE = 256;
-static const int RAM_SIZE = 32 * KB;
+
+static const int BIOS_SIZE = 16 * KB;
+static const int RAM_SIZE = 288 * KB;
+
+static const int STACK_SIZE = 1 * KB;
+static const int STACK_START = RAM_SIZE - STACK_SIZE - 1;
 
 static const int MAX_CLOCK_SPEED = 16.78 * MHz;
 
@@ -30,10 +33,9 @@ enum cspr_masks {
 };
 
 enum arm_instruction_formats {
-  BRANCH_AND_EXHANGE_FORMAT = 0b100101111111111110001<<5,
+  BRANCH_AND_EXCHANGE_FORMAT = 0b100101111111111110001<<5,
   BLOCK_DATA_TRANSFER_FORMAT = 0b100<<25,
-  BRANCH_FORMAT = 0b1010<<24,
-  BRANCH_AND_LINK_FORMAT = 0b1011<<24,
+  BRANCH_FORMAT = 0b101<<25,
   SOFTWARE_INTERRUPT_FORMAT = 0b1111<<24,
   UNDEFINED_FORMAT = 0b011 << 25 | 0b1 << 4,
   SINGLE_DATA_TRANSFER_FORMAT = 0b01 << 26,
@@ -43,6 +45,52 @@ enum arm_instruction_formats {
   HALFWORD_DATA_TRANSFER_FORMAT = 0b000 << 25 | 0b1 << 7 | 0b1 << 4,
   PSR_TRANSFER_FORMAT = 0b00 << 26 | 0b10 << 23,
   DATA_PROCCESSING_FORMAT = 0b00 << 26
+};
+
+enum arm_instruction_masks {
+    BRANCH_AND_EXCHANGE_MASK = 0b111111111111111111111<<5,
+  BLOCK_DATA_TRANSFER_MASK = 0b111<<25,
+  BRANCH_MASK = 0b111<<25,
+  SOFTWARE_INTERRUPT_MASK = 0b1111<<24,
+  UNDEFINED_MASK = 0b111 << 25 | 0b1 << 4,
+  SINGLE_DATA_TRANSFER_MASK = 0b11 << 26,
+  SINGLE_DATA_SWAP_MASK = 0b11111 << 23 | 0b11111111 << 4,
+  MULTIPLY_MASK = 0b11111 << 23 | 0b1111 << 4,
+  MULTIPLY_LONG_MASK = 0b11111 << 23 | 0b1111 << 4,
+  HALFWORD_DATA_TRANSFER_MASK = 0b111 << 25 | 0b1 << 7 | 0b1 << 4,
+  PSR_TRANSFER_MASK = 0b11 << 26 | 0b11 << 23,
+  DATA_PROCCESSING_MASK = 0b11 << 26
+};
+
+enum arm_instructions {
+  BRANCH_AND_EXCHANGE,
+  BLOCK_DATA_TRANSFER,
+  BRANCH,
+  SOFTWARE_INTERRUPT,
+  UNDEFINED,
+  SINGLE_DATA_TRANSFER,
+  SINGLE_DATA_SWAP,
+  MULTIPLY,
+  HALFWORD_DATA_TRANSFER,
+  PSR_TRANSFER,
+  DATA_PROCCESSING,
+  UNIMPLEMENTED_INSTRUCTION
+};
+
+enum thumb_instruction_format : uint16_t {
+  THUMB_SOFTWARE_INTERRUPT_FORMAT = 0b11011111 << 8,
+  THUMB_UNCONDITIONAL_BRANCH_FORMAT = 0b11100 << 11,
+  THUMB_CONDITIONAL_BRANCH_FORMAT = 0b1101 << 12,
+  THUMB_MULTI_LOAD_STORE_FORMAT = 0b1100 << 12,
+  THUMB_LONG_BRANCH_LINK_FORMAT = 0b1111 << 12,
+  THUMB_OFFSET_SP_FORMAT = 0b10110000 << 8,
+  THUMB_PUSH_POP_STACK_FORMAT = 0b1011 << 12 | 0b10 << 9,
+  THUMB_LOAD_STORE_HALFWORD_FORMAT = 0b1000 << 12,
+  THUMB_SP_RELATIVE_LOAD_STORE_FORMAT = 0b1001,
+  THUMB_LOAD_ADDRESS_FORMAT = 0b1010 << 12,
+  THUMB_IMMEDIATE_OFFSET_LOAD_STORE_FORMAT = 0b011 << 13,
+  THUMB_REG_OFFSET_LOAD_STORE_FORMAT = 0b0101 << 12 | 0b0 << 9,
+  //THUMB_LOAD_STORE_SIGN_EXTENDED_FORMAT 0b <<
 };
 
 enum cpsr_mode {
@@ -78,20 +126,51 @@ enum registers {
   r12,
   sp,
   ra,
-  link = ra,
+  lr = ra,
   pc,
-  reg_count
+  reg_count,
+  sp_svc = 0,
+  lr_svc,
+  spsr_svc,
+  svc_reg_count,
+  r8_fiq = 0,
+  r9_fiq,
+  r10_fiq,
+  r11_fiq,
+  r12_fiq,
+  sp_fiq,
+  lr_fiq,
+  spsr_fiq,
+  fiq_reg_count,
+  sp_abt = 0,
+  lr_abt,
+  spsr_abt,
+  abt_reg_count,
+  sp_irq = 0,
+  lr_irq,
+  spsr_irq,
+  irq_reg_count,
+  sp_und = 0,
+  lr_und,
+  spsr_und,
+  und_reg_count,
 };
 
 struct cpu {
   uint32_t registers[reg_count];
-
+  uint32_t svc_regs[svc_reg_count];
+  uint32_t fiq_regs[fiq_reg_count];
+  uint32_t abt_regs[abt_reg_count];
+  uint32_t irq_regs[irq_reg_count];
+  uint32_t und_regs[und_reg_count];
   BYTE rom[BIOS_SIZE];
   BYTE ram[RAM_SIZE];
   uint32_t cpsr;
 };
 
 struct bus {};
+
+void cpu_loop(struct cpu *cpu);
 
 WORD cpu_load_word(struct cpu *cpu, WORD address);
 
@@ -101,6 +180,22 @@ void cpu_save_halfword(struct cpu *cpu, WORD address, HALF_WORD value);
 
 HALF_WORD cpu_load_halfword(struct cpu *cpu, HALF_WORD address);
 
+int decode_arm_instruction(WORD instruction);
+
+int decode_thumb_instruction(HALF_WORD instruction);
+
 void cpu_execute_thumb_instruction( struct cpu *cpu, HALF_WORD instruction);
 
 void cpu_execute_arm_instruction( struct cpu *cpu, WORD instruction);
+
+void arm_branch_and_exchange(struct cpu *cpu, WORD instruction);
+
+void arm_block_data_transfer(struct cpu *cpu, WORD instruction);
+
+void arm_branch(struct cpu *cpu, WORD instruction);
+
+void arm_software_interrupt(struct cpu *cpu, WORD instruction);
+
+void cpu_change_mode(struct cpu *cpu, enum cpsr_mode mode);
+
+void arm_data_proccessing(struct cpu *cpu, WORD instruction):
