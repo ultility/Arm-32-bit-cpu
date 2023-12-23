@@ -1,4 +1,5 @@
 #include "main.h"
+#include <limits.h>
 
 int main(void) {
   struct cpu cpu;
@@ -23,12 +24,13 @@ WORD cpu_load_word(struct cpu *cpu, WORD address)
 }
 
 void cpu_save_word(struct cpu *cpu, WORD address, WORD value){
-  for (int i = 0; i < 4; i++)
+  for (int i = 0; i < sizeof(value); i++)
     {
       cpu->ram[address+i] = value >> sizeof(BYTE)*i*8;
       printf("byte %d saved as %u\n", i, cpu->ram[address+i]);
     } 
 }
+
 
 HALF_WORD cpu_load_halfword(struct cpu *cpu, HALF_WORD address)
 {
@@ -269,7 +271,7 @@ void arm_data_proccessing(struct cpu *cpu, WORD instruction)
   WORD op1 = cpu->registers[(instruction >> 16) & 0b1111];
   BYTE rd = (instruction >> 12) & 0b1111;
   WORD op2 = 0;
-  if ((instruction >> 25) & 0b1 == 0b1)
+  if (((instruction >> 25) & 0b1) == 0b1)
   {
     BYTE ror = instruction >> 7;
     ror &= 0b1111;
@@ -291,44 +293,55 @@ void arm_data_proccessing(struct cpu *cpu, WORD instruction)
         break;
       case 0x2: // sub
         cpu->registers[rd] = op1 - op2;
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op1, -op2);
+	}
         break;
       case 0x3: // rsv
-        cpu->registers[rd] = op2 - op1;
+        cpu->registers[rd] = op2 - op1;		
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op2, -op1);
+	}
         break;
       case 0x4: // add
         cpu->registers[rd] = op1 + op2;
-        if (cpu->registers[rd] < op1 && cpu->registers[rd] < op2)
-        {
-          cpu->cpsr |= FLAG_C << 28;
-        }
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op1, op2);
+	}
         break;
       case 0x5: // adc
-        cpu->registers[rd] = op1 + op2;
-        if (((cpu->cpsr >> 28) & FLAG_C) == FLAG_C)
-        {
-          cpu->registers[rd] += 1;
-        }
-        if (cpu->registers[rd] < op1 && cpu->registers[rd] < op2)
-        {
-          cpu->cpsr |= FLAG_C << 28;
-        }
+        cpu->registers[rd] = op1 + op2 + (FLAG_C >> 29);
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op1 + (FLAG_C >> 29), op2);
+	}
         break;
       case 0x6: // sbc
-        cpu->registers[rd] = op1 - op2 - 1;
-        if (((cpu->cpsr >> 28) & FLAG_C) == FLAG_C)
-        {
-          cpu->registers[rd] += 1;
-        }
+        cpu->registers[rd] = op1 - op2 - 1 + (FLAG_C >> 29);
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op1 + (FLAG_C >> 29), op2);
+	}
         break;
       case 0x7: // rsc
-        cpu->registers[rd] = op2 - op1 - 1;
-        if (((cpu->cpsr >> 28) & FLAG_C) == FLAG_C)
-        {
-          cpu->registers[rd] += 1;
-        }
+        cpu->registers[rd] = op2 - op1 - 1 + (FLAG_C >> 29);
+	if (((instruction >> 20) & 0b1) == 0b1)
+	{
+	  add_overflow_check(cpu, op1 + (FLAG_C >> 29) - 1, op2);
+	}
         break;
       case 0x8: // tst
-        op1 & op2;
+	if ((op1 & op2) == 0)
+	{
+	  cpu->cpsr |= FLAG_Z << 28;
+	}
+	if ((op1 & op2) >> 31 == 0b1)
+	{
+		cpu->cpsr |= FLAG_N << 28;
+	}
         break;
       case 0x9: // teq
         break;
@@ -345,4 +358,24 @@ void arm_data_proccessing(struct cpu *cpu, WORD instruction)
       case 0xf: // mvn
         break;
     }
+}
+
+void add_overflow_check(struct cpu *cpu, int op1, int op2)
+{
+  if (op2 > 0 && op1 >= INT_MAX - op2)
+  {
+	cpu->cpsr |= (FLAG_V | FLAG_C) << 28;
+	printf("overflow and carry\n");
+  }
+  if (op2 < 0 && op1 <= INT_MIN - op2)
+
+  {
+	  cpu->cpsr |= (FLAG_V) << 28;
+	  cpu->cpsr &= ~(FLAG_C << 28);
+	  printf("underflow\n");
+  }
+  else
+  {
+	  cpu->cpsr &= ~((FLAG_V & FLAG_C) << 28);
+  }
 }

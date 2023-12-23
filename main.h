@@ -198,4 +198,6 @@ void arm_software_interrupt(struct cpu *cpu, WORD instruction);
 
 void cpu_change_mode(struct cpu *cpu, enum cpsr_mode mode);
 
-void arm_data_proccessing(struct cpu *cpu, WORD instruction):
+void arm_data_proccessing(struct cpu *cpu, WORD instruction);
+
+void add_overflow_check(struct cpu *cpu, int op1, int op2);
